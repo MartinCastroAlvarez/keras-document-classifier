@@ -7,3 +7,5 @@ stanford-ner/
 ./data/*
 data/
 .mypy_cache
+search/*.json
+datasets/*.csv
