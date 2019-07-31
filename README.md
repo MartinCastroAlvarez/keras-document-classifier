@@ -1,6 +1,8 @@
 # France
 Neural Network using Keras and Google Search API.
 
+![image-alt](./france.jpg)
+
 ## References
 - [Python3 Newspaper](https://pypi.org/project/newspaper3k/)
 - [Google Search API](https://pypi.org/project/Google-Search-API/)
