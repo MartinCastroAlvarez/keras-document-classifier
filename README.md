@@ -2,6 +2,8 @@
 Neural Network using Keras and Google Search API.
 
 ## References
+- [Python3 Newspaper](https://pypi.org/project/newspaper3k/)
+- [Google Search API](https://pypi.org/project/Google-Search-API/)
 
 ## Usage
 Install this repo:
