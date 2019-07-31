@@ -10,6 +10,10 @@ import begin
 import typing
 import logging
 
+import asyncio
+import aiohttp
+from async_generator import async_generator, yield_
+
 from google.modules.standard_search import GoogleResult
 from google import google
 from slugify import slugify
@@ -132,22 +136,24 @@ class SearchResult:
         """
         Article getter.
         """
-        if not self.__article:
-            self.__download()
         return self.__article
 
-    def __download(self) -> None:
+    async def download(self) -> None:
         """
-        Private method to download site.
+        Public method to download site.
         """
         logger.debug("Downloading URL. | sf_url=%s", self.url)
         self.__article = Article(self.url)
-        self.__article.download()
-        logger.debug("Parsing URL. | sf_url=%s", self.url)
-        self.__article.parse()
-        logger.debug("Running NLP. | sf_url=%s", self.url)
-        self.__article.nlp()
-        logger.debug("Downloaded URL. | sf_url=%s", self.url)
+        async with aiohttp.ClientSession() as session:
+            async with session.get(self.url) as response:
+                logger.debug("Downloaded. | sf_response=%s", response)
+                text = await response.text()
+                self.__article.set_html(text)
+                logger.debug("Parsing URL. | sf_url=%s", self.url)
+                self.__article.parse()
+                logger.debug("Running NLP. | sf_url=%s", self.url)
+                self.__article.nlp()
+                logger.debug("Downloaded URL. | sf_url=%s", self.url)
 
 
 class Google:
@@ -161,8 +167,9 @@ class Google:
         """
         return "<Google>"
 
-    def search(self, term: str,
-               pages: int=1) -> typing.Generator[SearchResult, None, None]:
+    @async_generator
+    async def search(self, term: str,
+                     pages: int=1) -> typing.Generator[SearchResult, None, None]:
         """
         Public method to send a search request.
         """
@@ -170,7 +177,9 @@ class Google:
         results = google.search(term, pages)
         for result in results:
             logger.debug("Search result | sf_result=result")
-            yield SearchResult(result) 
+            r = SearchResult(result) 
+            await r.download()
+            await yield_(r)
         logger.debug("End of Google search | sf_term=%s")
 
 
@@ -337,18 +346,76 @@ class DatasetRow:
         }
 
 
+class Main:
+    """
+    Main handler.
+    """
+
+    @staticmethod
+    async def search(term="", pages=1, is_negative=False):
+        """
+        Search for interesting pages asynchronously.
+        """
+        logger.info("Searching | sf_term=%s | sf_pages=%s", term, pages)
+        g = Google()
+        async for r in g.search(term=term, pages=int(pages)):
+            r.save(is_negative)
+            print("Saved:", r.path)
+        print("No more search results.")
+
+    @staticmethod
+    def export(name=""):
+        """
+        Export a dataset.
+        """
+        logger.info("Exporting dataset.")
+        d = Dataset(name)
+        d.save()
+        print("Dataset saved:", d.path)
+
+    @staticmethod
+    def predict(name="", *url):
+        """
+        Make a prediction.
+        """
+        logger.info("Predicting | sf_model=%s | sf_urls=%s", name, urls)
+        m = Model()
+        m.load(name)
+        m.predict(*urls)
+        m.predictions.save()
+        print("Results available at:", m.predictions.path)
+
+    @staticmethod
+    def learn(split_ratio_test=0.2,
+              split_ratio_validation=0.1,
+              loss_function="categorical_crossentropy",
+              optimizer_function="adam",
+              accuracy_metric="accuracy",
+              epochs=5,
+              batch_size=300):
+        """
+        Learn from dataset.
+        """
+        logger.info("Learning | sf_dataset=%s", dataset)
+        n = NeuralNetwork()
+        n.learn(split_ratio_test=float(split_ratio_test),
+                split_ratio_validation=float(split_ratio_validation),
+                loss_function=loss_function,
+                optimizer_function=optimizer_function,
+                accuracy_metric=accuracy,
+                epochs=int(epochs),
+                batch_size=int(batch_size))
+        n.model.save()
+        print("Results available at:", m.model.path)
+
+
 @begin.subcommand
 @begin.logging
 def search(term="", pages=1, is_negative=False):
     """
     CLI Alias: Search for keyword.
     """
-    logger.info("Searching | sf_term=%s | sf_pages=%s", term, pages)
-    g = Google()
-    for r in g.search(term=term, pages=int(pages)):
-        r.save(is_negative)
-        print("Saved:", r.path)
-    print("No more search results.")
+    asyncio.run(Main.search(term, pages, is_negative))
 
 
 @begin.subcommand
@@ -357,10 +424,7 @@ def export(name=""):
     """
     CLI Alias: Export a dataset.
     """
-    logger.info("Exporting dataset.")
-    d = Dataset(name)
-    d.save()
-    print("Dataset saved:", d.path)
+    Main.export(name=name)
 
 
 @begin.subcommand
@@ -375,31 +439,22 @@ def learn(split_ratio_test=0.2,
     """
     CLI Alias: Learn from dataset.
     """
-    logger.info("Learning | sf_dataset=%s", dataset)
-    n = NeuralNetwork()
-    n.learn(split_ratio_test=float(split_ratio_test),
-            split_ratio_validation=float(split_ratio_validation),
-            loss_function=loss_function,
-            optimizer_function=optimizer_function,
-            accuracy_metric=accuracy,
-            epochs=int(epochs),
-            batch_size=int(batch_size))
-    n.model.save()
-    print("Results available at:", m.model.path)
+    Main.learn(split_ratio_test=float(split_ratio_test),
+               split_ratio_validation=float(split_ratio_validation),
+               loss_function=loss_function,
+               optimizer_function=optimizer_function,
+               accuracy_metric=accuracy,
+               epochs=int(epochs),
+               batch_size=int(batch_size))
 
 
 @begin.subcommand
 @begin.logging
-def predict(name="", *url):
+def predict(name="", *urls):
     """
     CLI Alias: Make a prediction.
     """
-    logger.info("Predicting | sf_model=%s | sf_urls=%s", name, urls)
-    m = Model()
-    m.load(name)
-    m.predict(*urls)
-    m.predictions.save()
-    print("Results available at:", m.predictions.path)
+    Main.predict(name, *urls)
 
 
 @begin.start(lexical_order=True, short_args=True)

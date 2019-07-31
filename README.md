@@ -1,5 +1,5 @@
 # France
-Neural Network using Keras and Google Search API.
+Neural Network using Keras, Google Search API and AsyncIO.
 
 ![image-alt](./france.jpg)
 
@@ -27,6 +27,31 @@ pip install -r requirements.txt
 Search for sample pages in Google:
 ```bash
 python3 paris.py search --term "Coffee Shop New Orleans" --pages 2
+python3 paris.py search --term "Coffee Shop" --pages 2
+python3 paris.py search --term "Restaurant" --pages 2
+python3 paris.py search --term "Italian Dinner" --pages 2
+python3 paris.py search --term "Food Bad Hamburguer" --pages 2
+python3 paris.py search --term "Indian Food Restaurant" --pages 2
+python3 paris.py search --term "Mexican Food Bar" --pages 2
+python3 paris.py search --term "Night Theatre" --pages 2
+python3 paris.py search --term "History Tour New Orleans" --pages 2
+python3 paris.py search --term "History Tour San Francisco" --pages 2
+python3 paris.py search --term "History Tour Los Angeles" --pages 2
+python3 paris.py search --term "New Orleans Organic Span" --pages 2
+python3 paris.py search --term "Beer Bar California" --pages 2
+python3 paris.py search --term "Night Bar California" --pages 2
+python3 paris.py search --term "Night Out Las Vegas" --pages 2
+python3 paris.py search --term "Cafe Las Vegas" --pages 2
+python3 paris.py search --term "Lounge Bar California" --pages 2
+python3 paris.py search --term "Rooftop Bar New York" --pages 2
+python3 paris.py search --term "Wedding Cake House" --pages 2
+python3 paris.py search --term "Donuts Los Angeles" --pages 2
+python3 paris.py search --term "Pizza Bar New York" --pages 2
+python3 paris.py search --term "Pizza Bar Los Angeles" --pages 2
+python3 paris.py search --term "Donuts New York" --pages 2
+python3 paris.py search --term "Tea Cafe" --pages 2
+python3 paris.py search --term "Town Bar" --pages 2
+python3 paris.py search --term "Donuts San Francisco" --pages 2
 python3 paris.py search --term "Amazon Web Services" --pages 3 --is-negative
 ```
 Export the dataset:
