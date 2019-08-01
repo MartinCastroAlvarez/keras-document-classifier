@@ -153,10 +153,19 @@ class SearchResult:
         """
         logger.debug("Loading URL. | sf_url=%s", self.url)
         if self.__is_cached():
+            logger.debug("Loading URL from Cache. | sf_url=%s", self.url)
             text = self.__load_from_cache()
         else:
-            text = await self.__dowload()
-            self.__save_to_cace(text)
+            logger.debug("Loading URL from the Web. | sf_url=%s", self.url)
+            text = await self.__download()
+        self.__parse_text(text)
+        self.__save_to_cache()
+
+    def __parse_text(self, text: str) -> None:
+        """
+        Private method to analyze text using Newspaper3K.
+        """
+        logger.debug("Analyzing Text. | sf_text=%s", len(text))
         self.__article = Article(self.url)
         self.__article.set_html(text)
         logger.debug("Parsing URL. | sf_url=%s", self.url)
@@ -164,6 +173,7 @@ class SearchResult:
         logger.debug("Running NLP. | sf_url=%s", self.url)
         self.__article.nlp()
         logger.debug("Loaded URL. | sf_url=%s", self.url)
+        logger.debug("Text Analyzed. | sf_text=%s", len(text))
 
     async def __download(self) -> str:
         """
@@ -212,21 +222,37 @@ class Google:
         return "<Google>"
 
     @async_generator
-    async def search(self,
-                     term: str,
-                     is_negative: bool,
-                     pages: int=1) -> typing.Generator[SearchResult, None, None]:
+    async def search(self, term: str, is_negative: bool,
+                     limit: int = 10) -> typing.Generator[SearchResult, None, None]:
         """
         Public method to send a search request.
         """
         logger.debug("Google search | sf_term=%s")
-        results = google.search(term, pages)
-        for result in results:
-            logger.debug("Search result | sf_result=result")
-            r = SearchResult(result, is_negative=is_negative)
-            await r.download()
-            await yield_(r)
-        logger.debug("End of Google search | sf_term=%s")
+        total_results = 0
+        page = 0
+        while True:
+            logger.debug("New Page | sf_page=%s", page)
+            results = google.search(term, page)
+            for result in results:
+                logger.debug("New Result | sf_result=%s", total_results)
+                total_results += 1
+                if total_results > limit:
+                    logger.debug("No More Results | sf_result=%s", total_results)
+                    break
+                logger.debug("Search result | sf_result=result")
+                r = SearchResult(result, is_negative=is_negative)
+                if r.url:
+                    try:
+                        await r.download()
+                        await yield_(r)
+                    except asyncio.TimeoutError:
+                        logger.exception("URL failed. | sf_url=%s", self.url)
+            if total_results > limit:
+                logger.debug("No More Results | sf_page=%s", page)
+                break
+            logger.debug("End of Page | sf_page=%s", page)
+            page += 1
+        logger.debug("End of Google search | sf_term=%s", term)
 
 
 class Dataset:
@@ -413,13 +439,13 @@ class Main:
     """
 
     @staticmethod
-    async def search(term="", pages=1, is_negative=False):
+    async def search(term="", limit=10, is_negative=False):
         """
         Search for interesting pages asynchronously.
         """
-        logger.info("Searching | sf_term=%s | sf_pages=%s", term, pages)
+        logger.info("Searching | sf_term=%s | sf_limit=%s", term, limit)
         g = Google()
-        async for r in g.search(term=term, pages=int(pages), is_negative=is_negative):
+        async for r in g.search(term=term, limit=int(limit), is_negative=is_negative):
             logger.info("URL saved. | sf_path=%s", r.path)
         logger.info("Search finished.")
 
@@ -471,12 +497,12 @@ class Main:
 
 @begin.subcommand
 @begin.logging
-def search(term="", pages=1, is_negative=False):
+def search(term="", limit=10, is_negative=False):
     """
     CLI Alias: Search for keyword.
     """
     loop = asyncio.get_event_loop()
-    s = Main.search(term, pages, is_negative)
+    s = Main.search(term, limit, is_negative)
     loop.run_until_complete(s)
 
 
