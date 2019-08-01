@@ -151,22 +151,52 @@ class SearchResult:
         """
         Public method to download site.
         """
-        logger.debug("Downloading URL. | sf_url=%s", self.url)
+        logger.debug("Loading URL. | sf_url=%s", self.url)
+        if self.__is_cached():
+            text = self.__load_from_cache()
+        else:
+            text = await self.__dowload()
+            self.__save_to_cace(text)
         self.__article = Article(self.url)
+        self.__article.set_html(text)
+        logger.debug("Parsing URL. | sf_url=%s", self.url)
+        self.__article.parse()
+        logger.debug("Running NLP. | sf_url=%s", self.url)
+        self.__article.nlp()
+        logger.debug("Loaded URL. | sf_url=%s", self.url)
+
+    async def __download(self) -> str:
+        """
+        Private async method to download from the web.
+        """
+        logger.info("Downloading | sf_url=%s", self.url)
         async with aiohttp.ClientSession() as session:
             async with session.get(self.url) as response:
                 logger.debug("Downloaded. | sf_response=%s", response)
-                text = await response.text()
-                self.__article.set_html(text)
-                logger.debug("Parsing URL. | sf_url=%s", self.url)
-                self.__article.parse()
-                logger.debug("Running NLP. | sf_url=%s", self.url)
-                self.__article.nlp()
-                logger.debug("Downloaded URL. | sf_url=%s", self.url)
-                logger.debug("Saving Result. | sf_result=%s", self)
-                with open(self.path, "w") as file_buffer:
-                    json.dump(self.to_json(), file_buffer)
-                logger.debug("Saved Result. | sf_result=%s", self)
+                return await response.text()
+
+    def __load_from_cache(self) -> str:
+        """
+        Private method to load article from string.
+        """
+        logger.debug("Loading Cache | sf_url=%s", self.url)
+        with open(self.path, "r") as file_buffer:
+            return file_buffer.read().replace("\n", " ").strip()
+
+    def __is_cached(self) -> bool:
+        """
+        Private method to evaluate if file is cached.
+        """
+        return os.path.isfile(self.path)
+
+    def __save_to_cache(self) -> None:
+        """
+        Private method to save URL to file.
+        """
+        logger.debug("Saving Result. | sf_result=%s", self)
+        with open(self.path, "w") as file_buffer:
+            json.dump(self.to_json(), file_buffer)
+        logger.debug("Saved Result. | sf_result=%s", self)
 
 
 
@@ -182,7 +212,9 @@ class Google:
         return "<Google>"
 
     @async_generator
-    async def search(self, term: str, is_negative: bool,
+    async def search(self,
+                     term: str,
+                     is_negative: bool,
                      pages: int=1) -> typing.Generator[SearchResult, None, None]:
         """
         Public method to send a search request.
@@ -289,8 +321,10 @@ class Dataset:
         with open(self.path, "w") as file_buffer:
             writer = csv.DictWriter(file_buffer, fieldnames=self.COLUMNS)
             writer.writeheader()
-            for row in self.rows:
-                logger.debug("Saving Row. | sf_row=%s", row)
+            for i, row in enumerate(self.rows):
+                logger.debug("Saving Row | sf_row=%s", row)
+                if not i % 50:
+                    logger.info("Dataset is being generated | sf_rows=%s", i)
                 writer.writerow(row)
         logger.debug("Saved Dataset. | sf_dataset=%s", self)
 
@@ -386,8 +420,8 @@ class Main:
         logger.info("Searching | sf_term=%s | sf_pages=%s", term, pages)
         g = Google()
         async for r in g.search(term=term, pages=int(pages), is_negative=is_negative):
-            print("Saved:", r.path)
-        print("No more search results.")
+            logger.info("URL saved. | sf_path=%s", r.path)
+        logger.info("Search finished.")
 
     @staticmethod
     def export(name=""):
@@ -397,8 +431,7 @@ class Main:
         logger.info("Exporting dataset.")
         d = Dataset(name)
         d.save()
-        print("Dataset saved:", d.path)
-        print("Lines:", d.lines)
+        logger.info("Dataset saved. | sf_path=%s | sf_lines=%s", d.path, d.lines)
 
     @staticmethod
     def predict(name="", *url):
@@ -410,7 +443,7 @@ class Main:
         m.load(name)
         m.predict(*urls)
         m.predictions.save()
-        print("Results available at:", m.predictions.path)
+        logger.info("Predictions generated. | sf_path=%s", m.predictions.path)
 
     @staticmethod
     def learn(split_ratio_test=0.2,
@@ -433,7 +466,7 @@ class Main:
                 epochs=int(epochs),
                 batch_size=int(batch_size))
         n.model.save()
-        print("Results available at:", m.model.path)
+        logger.info("Model generated. | sf_path=%s", m.model.path)
 
 
 @begin.subcommand
