@@ -22,6 +22,23 @@ from newspaper import Article
 logger = logging.getLogger(__name__)
 
 
+def to_string(x: typing.Any) -> str:
+    """
+    Utility to cast to string.
+    """
+    if isinstance(x, list):
+        return json.dumps([
+            to_string(y)
+            for y in x
+        ])
+    if isinstance(x, dict):
+        return json.dumps({
+            y: to_string(z)
+            for y, z in x.items()
+        })
+    return x.replace("\n", " ").replace("\r", "").encode("utf-8", "ignore").decode("utf-8")
+
+
 class Path:
     """
     App paths.
@@ -53,12 +70,13 @@ class SearchResult:
     SUMMARY = "summary"
     KEYWORDS = "keywords"
 
-    def __init__(self, data: GoogleResult) -> None:
+    def __init__(self, data: GoogleResult, is_negative: bool = False) -> None:
         """
         Result constructor.
         """
         logger.debug("Constructing Result. | sf_data=%s", data)
         self.__data: GoogleResult = data
+        self.is_negative = is_negative
         self.__article: typing.Optional[Article] = ""
 
     def __str__(self) -> str:
@@ -67,7 +85,7 @@ class SearchResult:
         """
         return "<Result: '{}'>".format(self.url)
 
-    def to_json(self, is_negative: bool=False) -> str:
+    def to_json(self) -> str:
         """
         JSON serializer.
         """
@@ -84,7 +102,7 @@ class SearchResult:
             self.DESCRIPTION: self.description,
             self.URL: self.url,
             self.SLUG: self.slug,
-            self.IS_NEGATIVE: is_negative,
+            self.IS_NEGATIVE: self.is_negative,
         }
 
     @property
@@ -122,15 +140,6 @@ class SearchResult:
         """
         return os.path.join(Path.SEARCH, "{}.json".format(self.slug))
 
-    def save(self, is_negative: bool=False) -> None:
-        """
-        Public method to save Result.
-        """
-        logger.debug("Saving Result. | sf_result=%s", self)
-        with open(self.path, "w") as file_buffer:
-            json.dump(self.to_json(is_negative), file_buffer)
-        logger.debug("Saved Result. | sf_result=%s", self)
-
     @property
     def article(self) -> Article:
         """
@@ -154,6 +163,11 @@ class SearchResult:
                 logger.debug("Running NLP. | sf_url=%s", self.url)
                 self.__article.nlp()
                 logger.debug("Downloaded URL. | sf_url=%s", self.url)
+                logger.debug("Saving Result. | sf_result=%s", self)
+                with open(self.path, "w") as file_buffer:
+                    json.dump(self.to_json(), file_buffer)
+                logger.debug("Saved Result. | sf_result=%s", self)
+
 
 
 class Google:
@@ -168,7 +182,7 @@ class Google:
         return "<Google>"
 
     @async_generator
-    async def search(self, term: str,
+    async def search(self, term: str, is_negative: bool,
                      pages: int=1) -> typing.Generator[SearchResult, None, None]:
         """
         Public method to send a search request.
@@ -177,7 +191,7 @@ class Google:
         results = google.search(term, pages)
         for result in results:
             logger.debug("Search result | sf_result=result")
-            r = SearchResult(result) 
+            r = SearchResult(result, is_negative=is_negative)
             await r.download()
             await yield_(r)
         logger.debug("End of Google search | sf_term=%s")
@@ -239,6 +253,16 @@ class Dataset:
                             else "{}.csv".format(self.name))
 
     @property
+    def lines(self) -> int:
+        """
+        File lines getter.
+        """
+        with open(self.path) as file_buffer:
+            for i, _ in enumerate(file_buffer):
+                pass
+        return i
+
+    @property
     def rows(self) -> typing.Generator[dict, None, None]:
         """
         Dataset rows getter.
@@ -249,21 +273,24 @@ class Dataset:
                 logger.debug("Found result. | sf_name=%s", row_name)
                 file_name = os.path.join(Path.SEARCH, row_name)
                 with open(file_name, "r") as file_buffer:
-                    row = DatasetRow(json.load(file_buffer))
+                    try:
+                        row = DatasetRow(json.load(file_buffer))
+                    except json.decoder.JSONDecodeError:
+                        raise RuntimeError("Can't open JSON file:", file_name)
                     if row.is_valid():
                         yield row.to_json()
         logger.debug("All Rows read. | sf_dataset=%s", self)
 
-    def save(self, is_negative: bool=False) -> None:
+    def save(self) -> None:
         """
         Public method to save Dataset.
         """
         logger.debug("Saving Dataset. | sf_dataset=%s", self)
         with open(self.path, "w") as file_buffer:
             writer = csv.DictWriter(file_buffer, fieldnames=self.COLUMNS)
+            writer.writeheader()
             for row in self.rows:
                 logger.debug("Saving Row. | sf_row=%s", row)
-                writer.writeheader()
                 writer.writerow(row)
         logger.debug("Saved Dataset. | sf_dataset=%s", self)
 
@@ -330,7 +357,7 @@ class DatasetRow:
         Private positive JSON serialier.
         """
         return {
-            k: v.replace("\n", " ") if isinstance(v, str) else json.dumps(v)
+            k: to_string(v)
             for k, v in self.__data.items()
             if k in Dataset.COLUMNS
         }
@@ -358,8 +385,7 @@ class Main:
         """
         logger.info("Searching | sf_term=%s | sf_pages=%s", term, pages)
         g = Google()
-        async for r in g.search(term=term, pages=int(pages)):
-            r.save(is_negative)
+        async for r in g.search(term=term, pages=int(pages), is_negative=is_negative):
             print("Saved:", r.path)
         print("No more search results.")
 
@@ -372,6 +398,7 @@ class Main:
         d = Dataset(name)
         d.save()
         print("Dataset saved:", d.path)
+        print("Lines:", d.lines)
 
     @staticmethod
     def predict(name="", *url):
@@ -415,7 +442,9 @@ def search(term="", pages=1, is_negative=False):
     """
     CLI Alias: Search for keyword.
     """
-    asyncio.run(Main.search(term, pages, is_negative))
+    loop = asyncio.get_event_loop()
+    s = Main.search(term, pages, is_negative)
+    loop.run_until_complete(s)
 
 
 @begin.subcommand
