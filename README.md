@@ -114,6 +114,24 @@ Export the dataset:
 python3 paris.py export --name "my-dataset-1.csv"
 ```
 
+#### Persisting the Dataset.
+Optionally, you can upload the dataset to S3.
+First create a new S3 Bucket:
+```bash
+aws s3api --profile "martin" create-bucket \
+    --bucket "datasets.martincastroalvarez.com" --region "us-east-1"
+```
+Then, upload the dataset to the S3 Bucket:
+```bash
+aws s3 --profile "martin" cp "./datasets/my-dataset-1.csv" \
+    "s3://datasets.martincastroalvarez.com/my-dataset-1.csv"
+```
+Finally, generate a pre-signed public URL that expires automatically:
+```bash
+aws s3 --profile "martin" presign --expires-in 10000 \
+    "s3://datasets.martincastroalvarez.com/my-dataset-1.csv"
+```
+
 #### Training a Prediction Model
 Generate a prediction model using Neural Networks:
 ```bash
