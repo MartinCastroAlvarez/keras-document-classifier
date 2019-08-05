@@ -1,0 +1,11 @@
+- GoogleApi search by Label and Query
+- Download HTML using Scrapy or BeautifulSoap
+- Extract text from HTML
+- Tokenization, Steaming, Lemmatization
+- Word Embeddings
+- Auto Encoders
+- Search LOCATION in GoogleMaps (or CITY).
+- Tag text with LABEL, TITLE, DESCRIPTION and LOCATION
+- Named Entity Recognition
+- Get 100.000 examples.
+- SVM or Unfreeze exiting model top layers.
